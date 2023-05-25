@@ -45,5 +45,5 @@ export default async function calculateGPTCost(usage, model) {
 		},
 	}
 
-	return `AI Cost: $${costs.total.toFixed(3)}`
+	return costs.total
 }

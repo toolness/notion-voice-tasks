@@ -8,32 +8,22 @@
  */
 
 // Import dependencies
-import { Client } from "@notionhq/client"
+import notion from "./notionClient.js"
 import Bottleneck from "bottleneck"
 import Fuse from "fuse.js"
-import { config as appConfigs } from "../config/config.js"
+import { config } from "../config/config.js"
+import retry from "async-retry"
 
-// Initialize the Notion SDK
-const notion = new Client({ auth: process.env.NOTION_API_KEY })
-
-// Set the DB IDs
-const dbs = {
-	tasks: process.env.NOTION_TASKS_DB,
-	projects: process.env.NOTION_PROJECTS_DB,
-}
-
-// Create the query/similarity function
+/** Create a new taskDetails array. Task name and due are transferred over from
+ *  the original object without any changes. Assignee and Project are set
+ *  using the findNearestOption() function, which queries the Notion API and finds
+ *  the closest option to the one provided using Fuse search.
+ * */
 export default async function getClosestNotionMatch(inputJSON) {
-	// Check to see that the function received valid JSON
 	if (typeof inputJSON !== "object" || inputJSON === null) {
 		throw new Error("Invalid JSON input.")
 	}
 
-	/** Create a new taskDetails array. Task name and due are transferred over from
-	 *  the original object without any changes. Assignee and Project are set
-	 *  using the findNearestOption() function, which queries the Notion API and finds
-	 *  the closest option to the one provided using Fuse search.
-	 * */
 	const taskArray = []
 	for (let task of inputJSON) {
 		const taskDetails = {
@@ -43,8 +33,14 @@ export default async function getClosestNotionMatch(inputJSON) {
 				: await findNearestChoice(task.assignee, "assignee"),
 			due: task.due_date || "Not included.",
 			project: !task.project
-				? "Not included"
+				? "Not included."
 				: await findNearestChoice(task.project, "projects"),
+		}
+
+		for (let prop in taskDetails) {
+			if (taskDetails[prop] === "Not included.") {
+				delete taskDetails[prop]
+			}
 		}
 
 		taskArray.push(taskDetails)
@@ -115,9 +111,23 @@ async function queryNotion(type) {
 		maxConcurrent: 1,
 	})
 
-	// Handle errors
+	// Handle 429 errors
 	limiter.on("error", (error) => {
-		throw new Error("Bottleneck error: ", error)
+		const isRateLimitError = error.statusCode === 429
+		if (isRateLimitError) {
+			console.log(
+				`Job ${jobInfo.options.id} failed due to rate limit: ${error}`
+			)
+			const waitTime = error.headers["retry-after"]
+				? parseInt(error.headers["retry-after"], 10)
+				: 0.4
+			console.log(`Retrying after ${waitTime} seconds...`)
+			return waitTime * 1000
+		}
+
+		console.log(`Job ${jobInfo.options.id} failed: ${error}`)
+		// Don't retry via limiter if it's not a 429
+		return
 	})
 
 	// Initial array for arrays of User or Project objects
@@ -125,29 +135,59 @@ async function queryNotion(type) {
 
 	// Query the Notion API until hasMore == false. Add all results to the rows array
 	while (hasMore == undefined || hasMore == true) {
-		let resp
+		await retry(
+			async (bail) => {
+				let resp
 
-		let params = {
-			page_size: 100,
-			start_cursor: token,
-		}
+				let params = {
+					page_size: 100,
+					start_cursor: token,
+				}
 
-		if (type === "assignee") {
-			resp = await limiter.schedule(() => notion.users.list(params))
-			rows.push(resp.results)
-		} else {
-			params = {
-				...params,
-				database_id: dbs[type],
+				try {
+					if (type === "assignee") {
+						resp = await limiter.schedule(() => notion.users.list(params))
+						rows.push(resp.results)
+					} else {
+						params = {
+							...params,
+							database_id: config.notion_dbs[type],
+						}
+						resp = await limiter.schedule(() => notion.databases.query(params))
+						rows.push(resp.results)
+					}
+
+					hasMore = resp.has_more
+					if (resp.next_cursor) {
+						token = resp.next_cursor
+					}
+				} catch (error) {
+					if (400 <= error.status && error.status <= 409) {
+						// Don't retry for errors 400-409
+						bail(error)
+						return
+					}
+
+					if (
+						error.status === 500 ||
+						error.status === 503 ||
+						error.status === 504
+					) {
+						// Retry on 500, 503, and 504
+						throw error
+					}
+
+					// Don't retry for other errors
+					bail(error)
+				}
+			},
+			{
+				retries: 2,
+				onRetry: (error, attempt) => {
+					console.log(`Attempt ${attempt} failed. Retrying...`)
+				},
 			}
-			resp = await limiter.schedule(() => notion.databases.query(params))
-			rows.push(resp.results)
-		}
-
-		hasMore = resp.has_more
-		if (resp.next_cursor) {
-			token = resp.next_cursor
-		}
+		)
 	}
 
 	return rows
@@ -159,7 +199,7 @@ function closestMatch(val, arr, keys) {
 	const options = {
 		keys: keys || ["name"],
 		includeScore: true,
-		threshold: appConfigs.search_threshold,
+		threshold: config.search_threshold,
 	}
 
 	// Create a new Fuse object

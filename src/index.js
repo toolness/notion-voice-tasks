@@ -7,6 +7,8 @@ import {
 	validateChatGPTResponse,
 } from "./services/validate.js"
 import getClosestNotionMatch from "./services/queryNotion.js"
+import formatChatResponse from "./services/formatChatResponse.js"
+import createNotionTasks from "./services/createNotionTasks.js"
 
 const app = express()
 const port = 3000
@@ -42,11 +44,19 @@ app.post("/task", async (req, res) => {
 		)
 
 		console.log("Results:", validatedResponse)
-		console.log("Cost", cost)
+		console.log(`AI Cost: $${cost.toFixed(3)}`)
 
 		// Match the response to the closest values in Notion
 		const matchedResponse = await getClosestNotionMatch(validatedResponse)
 		console.log("Matched Response:", matchedResponse)
+
+        // Format the response for Notion
+        const formattedResponse = formatChatResponse(matchedResponse, cost, body)
+        console.log("Formatted Response:", JSON.stringify(formattedResponse, null, 2))
+
+        // Send the tasks to Notion
+        const notionResponse = await createNotionTasks(formattedResponse)
+        console.log("Notion Response:", notionResponse)
 
 		// Send a response back to the client
 		res.sendStatus(200)
