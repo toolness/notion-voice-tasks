@@ -8,46 +8,53 @@
  */
 
 // Import dependencies
-import { Client } from "@notionhq/client";
-import Bottleneck from 'bottleneck'
+import { Client } from "@notionhq/client"
+import Bottleneck from "bottleneck"
+import Fuse from "fuse.js"
+import { config as appConfigs } from "../config/config.js"
 
 // Initialize the Notion SDK
-const notion = new Client({ auth: process.env.NOTION_API_KEY });
+const notion = new Client({ auth: process.env.NOTION_API_KEY })
 
 // Set the DB IDs
 const dbs = {
-  tasks: process.env.NOTION_TASKS_DB,
-  projects: process.env.NOTION_PROJECTS_DB,
-};
+	tasks: process.env.NOTION_TASKS_DB,
+	projects: process.env.NOTION_PROJECTS_DB,
+}
 
 // Create the query/similarity function
-export default async function queryNotion(inputJSON) {
-  // Get the validated JSON task array from ChatGPT
-  const originalTaskDetails = JSON.parse(inputJSON);
+export default async function getClosestNotionMatch(inputJSON) {
+	// Check to see that the function received valid JSON
+	if (typeof inputJSON !== "object" || inputJSON === null) {
+		throw new Error("Invalid JSON input.")
+	}
 
-  /** Create a new taskDetails array. Task name and due are transferred over from
-   *  the original object without any changes. Assignee, Creator, and Sponsor are set
-   *  using the findNearestOption() function, which queries the Notion API and finds
-   *  the closest option to the one provided using Levenshtein distance.
-   * */
-  const taskArray = [];
-  for (let task of originalTaskDetails) {
-    const taskDetails = {
-      task: task.task_name,
-      assignee: !task.assignee
-        ? "Not included."
-        : await findNearestChoice(task.assignee, "assignee"),
-      due: task.due_date || "Not included.",
-      project: !task.proeject
-        ? "Not included"
-        : await findNearestChoice(task.project, "projects"),
-    };
+	/** Create a new taskDetails array. Task name and due are transferred over from
+	 *  the original object without any changes. Assignee, Creator, and Sponsor are set
+	 *  using the findNearestOption() function, which queries the Notion API and finds
+	 *  the closest option to the one provided using Levenshtein distance.
+	 * */
+	const taskArray = []
+	for (let task of inputJSON) {
+		const taskDetails = {
+			task: task.task_name,
+			assignee: !task.assignee
+				? "Not included."
+				: await findNearestChoice(task.assignee, "assignee"),
+			due: task.due_date || "Not included.",
+			project: !task.project
+				? "Not included"
+				: await findNearestChoice(task.project, "projects"),
+		}
 
-    taskArray.push(taskDetails)
-  }
+		// DEBUG
+		console.log("Task Details Before Search", taskDetails)
 
-  // Return the taskArray
-  return taskArray;
+		taskArray.push(taskDetails)
+	}
+
+	// Return the taskArray
+	return taskArray
 }
 
 /**  Query Notion (users or dbs) using the provided value (e.g. Project)
@@ -56,97 +63,127 @@ export default async function queryNotion(inputJSON) {
  *  Then return the ID of the one with the lowest value.
  * */
 async function findNearestChoice(val, type) {
-  // Query Notion
-  const rows = await queryNotion(type)
+	// Query Notion
+	const rows = await queryNotion(type)
 
-  // Define the query type
-  const queryType = type === "assignee" ? "user" : "db"
+	// Define the query type
+	const queryType = type === "assignee" ? "user" : "db"
 
-  // Flatten the rows array
-  const flatRows = rows.flat();
-  //console.log(flatRows)
-  //console.log(`Found ${flatRows.length} objects.`);
+	// Flatten the rows array
+	const flatRows = rows.flat()
 
-  // Remove bot users
-  const cleanedRows = [];
-  for (let row of flatRows) {
-    if (row.type === "person" || row.object === "page") {
-      cleanedRows.push(row)
-    }
-  }
+	// Remove bot users
+	const cleanedRows = []
+	for (let row of flatRows) {
+		if (row.type === "person" || row.object === "page") {
+			cleanedRows.push(row)
+		}
+	}
 
-  /* Create an new array, storing only Name, Notion Page ID, and Levenshtein distance
-   *  in each object.
-   */
-  const choiceArray = [];
+	// DEBUG
+	console.log("Rows fetched from Notion", cleanedRows)
 
-  for (let result of cleanedRows) {
-    try {
-      const choiceName =
-        queryType === "db"
-          ? result.properties.Name.title[0].plain_text
-          : result.name;
+	// Create an new array, storing only Name and Notion Page ID of each object.
+	const choiceArray = []
 
-      const choiceObj = {
-        name: choiceName,
-        id: result.id,
-        distance: levenshtein.get(val, choiceName),
-        first_name_distance: levenshtein.get(val, choiceName.split(" ")[0]),
-      };
-      choiceArray.push(choiceObj)
-    } catch (e) {
-      console.log(e instanceof TypeError) // true
-      console.log(e.message) // "null has no properties"
-    }
-  }
+	for (let result of cleanedRows) {
+		try {
+			const choiceName =
+				queryType === "db"
+					? result.properties.Name.title[0].plain_text
+					: result.name
 
-  // Find the closet option that matches the provided name
-  const correctChoice = closestMatch(choiceArray, queryType);
+			const choiceObj = {
+				name: choiceName,
+				id: result.id,
+			}
+			choiceArray.push(choiceObj)
+		} catch (e) {
+			console.log(e instanceof TypeError) // true
+			console.log(e.message) // "null has no properties"
+		}
+	}
 
-  return correctChoice;
+	// DEBUG
+	console.log("Choice Array, Before Matching Search", choiceArray)
+
+	// Find the closet option that matches the provided name
+	const correctChoice = closestMatch(val, choiceArray)
+
+	return correctChoice
 }
 
 // Query the Notion API to get a list of either all projects in the Projects db, or all users.
 async function queryNotion(type) {
-  // Pagination variables
-  let hasMore = undefined;
-  let token = undefined;
+	// Pagination variables
+	let hasMore = undefined
+	let token = undefined
 
-  // Set up our Bottleneck limiter
-  const limiter = new Bottleneck({
-    minTime: 333,
-    maxConcurrent: 1
-  })
+	// Set up our Bottleneck limiter
+	const limiter = new Bottleneck({
+		minTime: 333,
+		maxConcurrent: 1,
+	})
 
-  // Initial array for arrays of User or Project objects
-  let rows = []
+	// Handle errors
+	limiter.on("error", (error) => {
+		throw new Error("Bottleneck error: ", error)
+	})
 
-  // Query the Notion API until hasMore == false. Add all results to the rows array
-  while (hasMore == undefined || hasMore == true) {
-    let resp
+	// Initial array for arrays of User or Project objects
+	let rows = []
 
-    if (token == undefined) {
-      if (type === "assignee") {
-        resp = await limiter.schedule(() => notion.users.list({ page_size: 100 }))
-      } else {
-        resp = await limiter.schedule(() => notion.databases.query({ database_id: dbs[type], page_size: 100 }))
-      }
-      rows.push(resp.results);
-    } else {
-      if (type === "assignee") {
-        resp = await limiter.schedule(() => notion.users.list({ page_size: 100, start_cursor: token }))
-      } else {
-        resp = await limiter.schedule(() => notion.databases.query({ database_id: dbs[type], page_size: 100, start_cursor: token }))
-      }
+	// Query the Notion API until hasMore == false. Add all results to the rows array
+	while (hasMore == undefined || hasMore == true) {
+		let resp
 
-      rows.push(resp.results)
-    }
+		let params = {
+			page_size: 100,
+			start_cursor: token,
+		}
 
-    hasMore = resp.has_more
-    if (resp.next_cursor) {
-      token = resp.next_cursor
-    }
-  }
+		if (type === "assignee") {
+			resp = await limiter.schedule(() => notion.users.list(params))
+			rows.push(resp.results)
+		} else {
+			params = {
+				...params,
+				database_id: dbs[type],
+			}
+			resp = await limiter.schedule(() => notion.databases.query(params))
+			rows.push(resp.results)
+		}
 
-  return rows
+		hasMore = resp.has_more
+		if (resp.next_cursor) {
+			token = resp.next_cursor
+		}
+	}
+
+	return rows
+}
+
+/* Use Fuse to find the closest match to the provided value. */
+function closestMatch(val, arr, keys) {
+	// Set the Fuse options
+	const options = {
+		keys: keys || ["name"],
+		includeScore: true,
+		threshold: appConfigs.search_threshold,
+	}
+
+	// Create a new Fuse object
+	const fuse = new Fuse(arr, options)
+
+	// Search for the closest match
+	const result = fuse.search(val)
+
+	// DEBUG
+	console.log("Result from Fuse Search", result)
+
+	if (result.length === 0) {
+		return "Not included."
+	} else {
+		return result[0].item
+	}
 }

@@ -1,36 +1,35 @@
-import { Configuration, OpenAIApi } from "openai";
-import { encode, decode } from "gpt-3-encoder";
-import { config } from "../config/config.js";
+import { Configuration, OpenAIApi } from "openai"
+import { encode, decode } from "gpt-3-encoder"
+import { config } from "../config/config.js"
 
-/* TO DO
- * 
+/** TO DO
+ *
  */
 
 // Initialize OpenAI
 const configuration = new Configuration({
-  apiKey: process.env.OPEN_AI_KEY,
-});
-const openai = new OpenAIApi(configuration);
+	apiKey: process.env.OPEN_AI_KEY,
+})
+const openai = new OpenAIApi(configuration)
 
 export default async function parseTaskWithGPT(inputJSON) {
+	// Construct the task prompt with the date for relative due-date setting, and set the name
+	const task = `Today is ${inputJSON.date}. ${inputJSON.task}`
+	const name = inputJSON.name
 
-  // Construct the task prompt with the date for relative due-date setting, and set the name
-  const task = `Today is ${inputJSON.date}. ${inputJSON.task}`;
-  const name = inputJSON.name;
+	// Set the max number of tokens a task can contain
+	const maxTokens = config.maxtokens
 
-  // Set the max number of tokens a task can contain
-  const maxTokens = config.maxtokens;
+	// Check the number of tokens in the task
+	const tokens = encode(task)
+	if (tokens.length > maxTokens) {
+		throw new Error(
+			`Task is too long. Max tokens: ${maxTokens}. Task tokens: ${tokens.length}`
+		)
+	}
 
-  // Check the number of tokens in the task
-  const tokens = encode(task);
-  if (tokens.length > maxTokens) {
-    throw new Error(
-      `Task is too long. Max tokens: ${maxTokens}. Task tokens: ${tokens.length}`
-    );
-  }
-
-  // Construct the system message
-  const systemMessage = `You are a natural language processor for a task management app. Your job is to take natural-language prompts and turn them into tasks. 
+	// Construct the system message
+	const systemMessage = `You are a natural language processor for a task management app. Your job is to take natural-language prompts and turn them into tasks. 
 
     You should look for task name, due date, assignee, and project. If due date or project is not present in each task's sentence, don't include it, and do not include a property for it.
     
@@ -68,21 +67,24 @@ export default async function parseTaskWithGPT(inputJSON) {
         "task_name": "Talk to Dave about new sponsors",
         "assignee": "${name}"
       }
-    ]`;
+    ]`
 
-  // Send the task prompt and system message to OpenAI
-  try {
-        const response = await openai.createChatCompletion({
-            model: config.model,
-            messages: [
-                { role: "system", content: systemMessage },
-                { role: "user", content: task },
-            ]
-        })
-    
-        // Return the response
-        return response
-    } catch (error) {
-        throw new Error('Encountered an error when trying to send data to OpenAI:', error)
-    }
+	// Send the task prompt and system message to OpenAI
+	try {
+		const response = await openai.createChatCompletion({
+			model: config.model,
+			messages: [
+				{ role: "system", content: systemMessage },
+				{ role: "user", content: task },
+			],
+		})
+
+		// Return the response
+		return response
+	} catch (error) {
+		throw new Error(
+			"Encountered an error when trying to send data to OpenAI:",
+			error
+		)
+	}
 }

@@ -1,48 +1,61 @@
-import './config/config.js'
-import express from 'express'
-import parseTaskWithGPT from './services/chatgpt.js'
-import calculateGPTCost from './services/cost.js'
-import { validateUserInput, validateChatGPTResponse } from './services/validate.js'
+import "./config/config.js"
+import express from "express"
+import parseTaskWithGPT from "./services/chatgpt.js"
+import calculateGPTCost from "./services/cost.js"
+import {
+	validateUserInput,
+	validateChatGPTResponse,
+} from "./services/validate.js"
+import getClosestNotionMatch from "./services/queryNotion.js"
 
 const app = express()
 const port = 3000
 
 app.use(express.json())
 
-app.get('/', (req, res) => {
-    res.send('Hello World!')
+app.get("/", (req, res) => {
+	res.send("Hello World!")
 })
 
 // Create a POST endpoint for handling requests
-app.post('/task', async (req, res) => {
-    try {
-        // Get the request body
-        const body = req.body
-        console.log("Request Body:", body)
-        
-        // Validate the request body
-        const validatedBody = validateUserInput(body)
+app.post("/task", async (req, res) => {
+	try {
+		// Get the request body
+		const body = req.body
+		console.log("Request Body:", body)
 
-        // Parse the task with GPT
-        const parsedTask = await parseTaskWithGPT(validatedBody)
+		// Validate the request body
+		const validatedBody = validateUserInput(body)
 
-        // Get the cost of the GPT request
-        const cost = await calculateGPTCost(parsedTask.data.usage, parsedTask.data.model)
+		// Parse the task with GPT
+		const parsedTask = await parseTaskWithGPT(validatedBody)
 
-        // Validate the response from ChatGPT
-        const validatedResponse = validateChatGPTResponse(parsedTask.data.choices[0].message.content)
+		// Get the cost of the GPT request
+		const cost = await calculateGPTCost(
+			parsedTask.data.usage,
+			parsedTask.data.model
+		)
 
-        console.log("Results:", validatedResponse)
-        console.log("Cost", cost)
+		// Validate the response from ChatGPT
+		const validatedResponse = validateChatGPTResponse(
+			parsedTask.data.choices[0].message.content
+		)
 
-        // Send a response back to the client
-        res.sendStatus(200)
-    } catch (error) {
-        console.log(error)
-        res.status(400).send({ error: error.message })
-    }
+		console.log("Results:", validatedResponse)
+		console.log("Cost", cost)
+
+		// Match the response to the closest values in Notion
+		const matchedResponse = await getClosestNotionMatch(validatedResponse)
+		console.log("Matched Response:", matchedResponse)
+
+		// Send a response back to the client
+		res.sendStatus(200)
+	} catch (error) {
+		console.log(error)
+		res.status(400).send({ error: error.message })
+	}
 })
 
 app.listen(port, () => {
-    console.log(`Example app listening at http://localhost:${port}`)
+	console.log(`Example app listening at http://localhost:${port}`)
 })
