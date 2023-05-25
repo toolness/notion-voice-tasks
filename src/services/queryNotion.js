@@ -1,7 +1,7 @@
 /** This module queries the user's Notion workspace and specified Projects database.
  * It returns a list of all users in the workspace and projects in the Projects database,
  * then compares those lists against each task returned from ChatGPT, picking the closest
- * matches. A threshold is set for the minimum similarity score between the task assignee/Project
+ * matches. A threshold is set for the minimum similarity score between the task Assignee/Project
  * and the results from the users list/project database. If the similarity score is below the
  * threshold, the value will be left blank, ensuring that the task goes to a common inbox. If the
  * similarity score is above the threshold, the value will be set to the closest match.
@@ -30,9 +30,9 @@ export default async function getClosestNotionMatch(inputJSON) {
 	}
 
 	/** Create a new taskDetails array. Task name and due are transferred over from
-	 *  the original object without any changes. Assignee, Creator, and Sponsor are set
+	 *  the original object without any changes. Assignee and Project are set
 	 *  using the findNearestOption() function, which queries the Notion API and finds
-	 *  the closest option to the one provided using Levenshtein distance.
+	 *  the closest option to the one provided using Fuse search.
 	 * */
 	const taskArray = []
 	for (let task of inputJSON) {
@@ -47,9 +47,6 @@ export default async function getClosestNotionMatch(inputJSON) {
 				: await findNearestChoice(task.project, "projects"),
 		}
 
-		// DEBUG
-		console.log("Task Details Before Search", taskDetails)
-
 		taskArray.push(taskDetails)
 	}
 
@@ -58,9 +55,8 @@ export default async function getClosestNotionMatch(inputJSON) {
 }
 
 /**  Query Notion (users or dbs) using the provided value (e.g. Project)
- *  Get a response from Notion, then loop through and get the Levenshtein distance
- *  for each when compared to the input value.
- *  Then return the ID of the one with the lowest value.
+ *  Get a response from Notion, then send all rows to the closestMatch() function
+ *  to find the closest match to the provided value.
  * */
 async function findNearestChoice(val, type) {
 	// Query Notion
@@ -79,9 +75,6 @@ async function findNearestChoice(val, type) {
 			cleanedRows.push(row)
 		}
 	}
-
-	// DEBUG
-	console.log("Rows fetched from Notion", cleanedRows)
 
 	// Create an new array, storing only Name and Notion Page ID of each object.
 	const choiceArray = []
@@ -103,9 +96,6 @@ async function findNearestChoice(val, type) {
 			console.log(e.message) // "null has no properties"
 		}
 	}
-
-	// DEBUG
-	console.log("Choice Array, Before Matching Search", choiceArray)
 
 	// Find the closet option that matches the provided name
 	const correctChoice = closestMatch(val, choiceArray)
@@ -177,9 +167,6 @@ function closestMatch(val, arr, keys) {
 
 	// Search for the closest match
 	const result = fuse.search(val)
-
-	// DEBUG
-	console.log("Result from Fuse Search", result)
 
 	if (result.length === 0) {
 		return "Not included."
