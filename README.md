@@ -81,7 +81,17 @@ Give the integration permission to access your **tasks** and **projects** databa
 
 Get the databases IDs for your task/project databases and add them to your `.env` file. [Learn how to find your database IDs here](https://thomasjfrank.com/notion-api-crash-course/#obtain-your-database-id).
 
-Make sure your Tasks database has a **Select** property named **Source**. The `src/services/formatChatResponse.js` file sets a value for this property on each created page (task). The value is defined in `src/config/config.js`.
+Your Notion tasks database must have the following properties (names must match exactly):
+
+| Property Name | Type                     |
+|---------------|--------------------------|
+| Name          | Title (default property) |
+| Assignee      | Person                   |
+| Due           | Date                     |
+| Project       | Relation                 |
+| Source        | Select                   |
+
+As shown in the table above, make sure your Tasks database has a **Select** property named **Source**. The `src/services/formatChatResponse.js` file sets a value for this property on each created page (task). The value is defined in `src/config/config.js`.
 
 You will also need an OpenAI account. While you may be given $5 in free credits upon signup, you'll need to add your billing details to continue using this beyond that. 
 
@@ -119,9 +129,25 @@ My real intention for this tool (and the associated Pipedream workflow) is not t
 
 Here's how you'd build a Siri Shortcut to use with this workflow:
 
+![Siri Shortcut configuration](https://github.com/TomFrankly/notion-voice-tasks/blob/main/img/Shortcut_Example.jpg)
 
+## Learn More/Support My Work
 
+You can learn more about Notion, and Notion automation, at these pages on my site:
 
+* [Notion Fundamentals – Full Beginners' Series for Learning Notion](https://thomasjfrank.com/fundamentals/)
+* [Notion Automations – Collection of No-Code and Code Tutorials](https://thomasjfrank.com/notion-automations/)
+* [Notion API Guide – Full (and free) course for learning the Notion API](https://thomasjfrank.com/notion-api-crash-course/)
+
+If you'd like to support my work, consider buying one of my Notion templates (or picking up one of the free ones):
+
+* [Ultimate Brain – complete second brain for Notion](https://thomasjfrank.com/brain/)
+* [Creator's Companion – the ultimate planning system for content creators](https://thomasjfrank.com/creators-companion/)
+* [Free Notion Templates](https://thomasjfrank.com/templates/)
+
+## License
+
+[GNU v3.0](https://github.com/TomFrankly/notion-voice-tasks/blob/main/LICENSE)
 
 
 
