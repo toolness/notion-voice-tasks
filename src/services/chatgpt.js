@@ -85,8 +85,7 @@ export default async function parseTaskWithGPT(inputJSON) {
 		return response
 	} catch (error) {
 		throw new Error(
-			"Encountered an error when trying to send data to OpenAI:",
-			error
+			`Encountered an error when trying to send data to OpenAI: ${error}.`
 		)
 	}
 }
