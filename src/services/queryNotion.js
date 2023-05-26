@@ -152,6 +152,7 @@ async function queryNotion(type) {
 						params = {
 							...params,
 							database_id: config.notion_dbs[type],
+							//filter_properties: ["title"]
 						}
 						resp = await limiter.schedule(() => notion.databases.query(params))
 						rows.push(resp.results)
