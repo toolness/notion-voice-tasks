@@ -2,14 +2,20 @@ import Joi from "joi"
 import validator from "validator"
 import dayjs from "dayjs"
 import { jsonrepair } from "jsonrepair"
+import emojiRegex from "emoji-regex"
 
 // Function to validate the user input from Shortcuts, Tasker, etc.
 export function validateUserInput(data) {
 	// Define the Joi schema for each property in the data
 	const scheme = Joi.object({
 		task: Joi.string()
-			.pattern(new RegExp("^[a-zA-Z0-9.,!?;$ ]*$"))
-			.message("Task must only contain letters, numbers, and punctuation.")
+            .custom((value, helpers) => {
+                const alphanumeric = new RegExp("^[a-zA-Z0-9.,!?;$ ]*$")
+                if (!alphanumeric.test(value) && !emojiRegex().test(value)) {
+                    return helpers.message("Task must only contain letters, numbers, emoji, and punctuation.")
+                }
+                return value
+            })
 			.required(),
 		name: Joi.string()
 			.max(50)
