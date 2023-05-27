@@ -33,7 +33,7 @@ export default async function parseTaskWithGPT(inputJSON) {
 
     You should look for task name, due date, assignee, and project. If due date or project is not present in each task's sentence, don't include it, and do not include a property for it.
     
-    When you isolate a part of the prompt that represents a task, look for the word "project". If "project" is not present, do not include a project property for that task. If "project" is present, create a project property, but do not include the word "project" in its value.
+    Pay extra attention to this instruction: When you isolate a part of the prompt that represents a task, look for the word "project". If "project" is not present, do not include a project property for that task. If "project" is present, create a project property, but do not include the word "project" in its value.
 
 	Example: "studio design project" would equate to "project: studio design".
     
@@ -45,7 +45,7 @@ export default async function parseTaskWithGPT(inputJSON) {
     
     Example prompt:
     
-    "Tony needs to mount the new hair light by Saturday for the music video shoot, I need to sweep out the garage by next Tuesday, Marissa needs to book a flight to Seattle for the team retreat, and I need to talk to Dave about new sponsors."
+    "Tony needs to mount the new hair light by Saturday for the music video shoot project, I need to sweep out the garage by next Tuesday, Marissa needs to book a flight to Seattle for the team retreat project, and I need to talk to Dave about new sponsors."
     
     Example formatting:
     
@@ -64,6 +64,7 @@ export default async function parseTaskWithGPT(inputJSON) {
       {
         "task_name": "Book flight to Seattle",
         "assignee": "Marissa",
+        "project": "Team Retreat"
       },
       {
         "task_name": "Talk to Dave about new sponsors",
