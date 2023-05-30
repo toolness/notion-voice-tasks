@@ -37,7 +37,7 @@ When a payload is received, the following happens:
 2. The sanitized JSON object is combined with the current date/timezone to form a prompt. This is sent to as a Chat request to ChatGPT, along with a customized system message that instructs ChatGPT to act as a natural-language task parser.
 3. ChatGPT returns a JSON array containing an object for each task.
 4. The cost of the request and response are calculated (typically this is < $0.001).
-5. The ChatGPT response is validated, primarily to make sure the response is valid JSON. If it isn't, steps are taken to attemp JSON repair.
+5. The ChatGPT response is validated, primarily to make sure the response is valid JSON. If it isn't, steps are taken to attempt JSON repair.
 6. The app queries Notion to fetch a list of all workspace users and all projects in the Projects database. We then use fuzzy search (Fuse.js) to determine the closest match for both the **assignee** and the **project**. If none of the fetched data meets a search-score threshold, neither of these values will be set. This ensures that tasks go to your Inbox by default, rather than being assigned to the wrong person or project. *You can adjust the threshold in `src/config/config.js`.* **Note:** This is also why the app sets the **Source** property's value. In the case that a task is incorrectly assigned, you'll always be able to find it by creating a view of your Tasks database that shows all tasks with a **Source** property that matches the one you set for your workflow (by default, it's "iOS Shortcut").
 7. For each task, an object is constructed that meets the format required by the Notion API.
 8. Each task is sent to Notion, creating a new page in the Tasks database.
